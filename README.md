@@ -21,7 +21,19 @@ Enter the server hostname and port separately. Leave version empty to detect it 
 
 Offline usernames are also available for your own servers with `online-mode=false`. They cannot join an authenticated server as a paid account.
 
+## Gameplay
+
+Choose a connected account under **Gameplay**, open its 3D view, and click **Take control**. WASD moves, the mouse looks, Space jumps, Ctrl sprints, and Shift sneaks. Use 1 to 9 or the wheel to choose a hotbar slot. Left click digs or attacks, right click uses items, opens containers or places blocks. E opens inventory, and T opens chat (including server commands).
+
+Esc releases the mouse and resumes the saved route and anti-AFK settings. Closing or unfocusing the gameplay window also releases controls. Only one window can control an account at a time. Inventory and chat pause movement while open. Left/right click inventory slots to move items, or shift-click to transfer them.
+
+The 3D view uses Prismarine Viewer with built-in Minecraft textures and loaded chunks. Graphics run in the browser only while the gameplay window is open. It is a lightweight client, so vanilla screens, sounds and animations are not all reproduced. Renderer support can differ from the bot's protocol support.
+
 ## Walking
+
+The **Local map** shows terrain from a connected account's loaded chunks. The blue arrow marks its position and facing direction; orange markers show its saved route. Choose an account, hover for coordinates, and click a surface to walk there. A click replaces that account's route with a single destination and uses the surface's standing height automatically.
+
+**Surface** shows the highest terrain, including sky platforms. **At player height** hides terrain above the player, which is useful under roofs. Dark areas have no loaded block data and cannot be clicked. The map follows the player and refreshes every two seconds. A surface can still be unreachable if obstacles block the path.
 
 Select accounts, choose a movement mode and enter integer coordinates, one `X Y Z` waypoint per line. Y is the block occupied by the player's feet, not the floor below it.
 
@@ -29,7 +41,7 @@ Select accounts, choose a movement mode and enter integer coordinates, one `X Y 
 - **Walk to a position** takes one waypoint and stops on arrival.
 - **Keep walking a route** needs at least two different waypoints and repeats them until you stop it.
 
-Routes are saved per account and resume after a reconnect or respawn. Bots avoid breaking or placing blocks. They can walk off sky platforms and fall to lower waypoints; normal server fall damage still applies. An unreachable waypoint retries every 10 seconds; use nearby reachable waypoints to guide longer walks. Headless clients still receive chunks and simulate physics for pathfinding, so memory and CPU use grow with the number of accounts. No renderer, textures, audio or resource pack downloads are used. A two-chunk view distance is requested, but the server controls how much it sends.
+Routes are saved per account and resume after a reconnect or respawn. Bots avoid breaking or placing blocks while following routes. They can walk off sky platforms and fall to lower waypoints; normal server fall damage still applies. An unreachable waypoint retries every 10 seconds; use nearby reachable waypoints to guide longer walks. Headless clients still receive chunks and simulate physics for pathfinding, so memory and CPU use grow with the number of accounts. AFK sessions run without rendering, textures or audio; opening gameplay adds a browser renderer. Server resource packs are not downloaded. A two-chunk view distance is requested, but the server controls how much it sends.
 
 Settings and account labels are saved in `data/settings.json`. Restarting the app does not automatically join servers. The dashboard binds to loopback only and rejects foreign origins. Removing an account deletes its cached Microsoft session.
 

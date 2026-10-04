@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>stayalive gameplay</title><link rel="stylesheet" href="play.css"></head>
+<body>
+  <div id="crosshair" aria-hidden="true">+</div>
+  <div id="game-info">Loading world...</div>
+  <div id="game-message" role="status"></div>
+  <div id="game-overlay"><h1>Gameplay</h1><p id="game-status">Connecting to your account...</p><button id="take-control" disabled>Take control</button><p class="keys">WASD move · mouse look · Space jump · Ctrl sprint · Shift sneak<br>1–9 / wheel hotbar · left click dig/attack · right click use/place<br>E inventory · T chat · Esc release control</p><p class="keys">Routes and anti-AFK pause while you control the player.</p></div>
+  <div id="vitals"></div><div id="hotbar" aria-label="Hotbar"></div>
+  <div id="chat-messages" aria-live="polite"></div>
+  <form id="chat-form" hidden><input id="chat-input" aria-label="Chat or command" maxlength="256" placeholder="Message or /command" autocomplete="off"><button>Send</button></form>
+  <div id="inventory-panel" hidden><div class="inventory-heading"><strong id="inventory-title">Inventory</strong><button id="close-inventory">Close (E)</button></div><div id="inventory-slots"></div><p id="inventory-carried"></p><p>Left/right click to move items. Shift-click for quick transfer.</p></div>
+  <script src="socket.io/socket.io.js"></script><script src="controls.js"></script><script src="index.js"></script>
+</body></html>

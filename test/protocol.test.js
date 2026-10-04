@@ -91,6 +91,13 @@ test('real clients walk off a sky platform, land 36 blocks below and continue th
   assert.equal(manager.get(ids[0]).status, 'idle')
   manager.refresh()
   assert.ok(manager.get(ids[0]).position)
+  const map = manager.map(ids[0], 16, 'surface')
+  const tile = (x, z) => map.tiles[(z - map.origin.z) * map.size + (x - map.origin.x)]
+  assert.equal(tile(2, 2).y, 101)
+  assert.equal(tile(8, 2).y, 65)
+  assert.throws(() => manager.walkOnMap(ids[0], 1000, 2, 'surface'), /within/)
+  assert.deepEqual(manager.walkOnMap(ids[0], 8, 2, 'surface'), { x: 8, y: 65, z: 2 })
+  await waitUntil(() => manager.get(ids[0]).status === 'idle' && Math.floor(manager.get(ids[0]).bot.entity.position.x) === 8)
   manager.setRoute([ids[0]], { mode: 'goto', points: [{ x: 5, y: 60, z: 2 }] })
   await waitUntil(() => manager.get(ids[0]).status === 'path blocked')
   assert.equal(manager.get(ids[0]).route.mode, 'goto')
@@ -108,6 +115,15 @@ test('real clients walk off a sky platform, land 36 blocks below and continue th
   actions.antiAfk.enabled = false
   manager.setActions([ids[0]], actions)
   assert.equal(manager.get(ids[0]).antiTimer, null)
+  manager.beginManual(ids[0], 'protocol-window')
+  const start = manager.get(ids[0]).bot.entity.position.clone()
+  for (let i = 0; i < 4; i++) {
+    manager.manualInput(ids[0], 'protocol-window', { keys: ['forward'], yaw: Math.PI / 2, pitch: 0, slot: 2 })
+    await delay(250)
+  }
+  assert.ok(manager.get(ids[0]).bot.entity.position.distanceTo(start) > 1)
+  manager.endManual(ids[0], 'protocol-window')
+  assert.equal(manager.get(ids[0]).bot.getControlState('forward'), false)
   ids.forEach(id => manager.disconnect(id))
   await waitUntil(() => Object.keys(server.clients).length === 0)
   assert.ok([...manager.accounts.values()].every(a => a.status === 'disconnected'))

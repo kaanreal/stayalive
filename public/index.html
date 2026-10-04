@@ -6,6 +6,7 @@
   <title>stayalive</title>
   <link rel="stylesheet" href="/style.css">
   <script src="/app.js" defer></script>
+  <script src="/map.js" defer></script>
 </head>
 <body>
   <header><a class="brand" href="/">stay<span>alive</span><span class="brand-block" aria-hidden="true">▦</span></a><span class="edition">JAVA EDITION / LOCAL CLIENT</span><span id="connection" role="status">Connecting to dashboard...</span></header>
@@ -35,6 +36,8 @@
         <div class="aside-note"><span aria-hidden="true">▧</span><p>No graphics or textures.<br>Chunk data stays loaded for movement.</p></div>
       </aside>
       <div class="content">
+        <section><div class="section-heading"><div><h2>Gameplay</h2><p class="hint">Open a 3D view and control one connected account.</p></div><div class="toolbar"><select id="game-account" aria-label="Gameplay account"><option value="">Choose an account</option></select><button id="open-game" class="primary">Open gameplay</button></div></div><p class="hint">WASD, mouse look, jump, sprint, sneak, hotbar, digging, placing, inventory and chat. Close the gameplay window to return to AFK.</p></section>
+        <section class="map-section"><div class="section-heading"><div><h2>Local map</h2><p class="hint">Click a loaded surface to walk there. This replaces that account’s route.</p></div><div class="map-controls"><select id="map-account" aria-label="Map account"><option value="">Choose an account</option></select><select id="map-layer" aria-label="Map layer"><option value="surface">Surface</option><option value="player">At player height</option></select><select id="map-radius" aria-label="Map range"><option value="16">33 × 33 blocks</option><option value="24" selected>49 × 49 blocks</option><option value="32">65 × 65 blocks</option></select></div></div><div class="map-wrap"><canvas id="map" width="640" height="640" tabindex="0" aria-label="Top-down terrain map. Click to walk, or use the coordinate form below."></canvas><p id="map-status" role="status">Choose a connected account to load its map.</p></div><div class="map-caption"><span id="map-hover">North is up. Hover for coordinates.</span><span>Blue: player · orange: route · dark: unloaded</span></div></section>
         <section class="accounts-section"><div class="section-heading"><div><h2>Accounts</h2><p class="hint" id="selected-count">0 selected</p></div><div class="toolbar"><button id="join-selected" class="primary">Join selected</button><button id="disconnect-selected">Disconnect</button></div></div>
           <div class="table-wrap"><table><thead><tr><th><input id="select-all" aria-label="Select all accounts" type="checkbox"></th><th>Account</th><th>Status</th><th>Position / route</th><th>Controls</th></tr></thead><tbody id="accounts"></tbody></table></div>
           <div id="empty" class="empty"><span aria-hidden="true">▦</span><h3>Room for your accounts.</h3><p>Add a few labels on the left, sign in, then join your server.</p></div>

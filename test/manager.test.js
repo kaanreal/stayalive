@@ -15,12 +15,14 @@ function setup (t, extra = {}) {
     createBot: options => {
       const bot = new EventEmitter()
       bot.options = options
+      bot.world = {}
+      bot.version = '1.16.5'
       bot.username = options.username
       bot.entity = { position: { x: 0, y: 64, z: 0 }, yaw: 0, pitch: 0 }
       bot.loadPlugin = () => {}
-      bot.controlState = { jump: false, sneak: false }
+      bot.controlState = { forward: false, back: false, left: false, right: false, jump: false, sneak: false, sprint: false }
       bot.setControlState = (key, value) => { bot.controlState[key] = value }
-      bot.clearControlStates = () => { bot.cleared = true; bot.controlState.jump = false; bot.controlState.sneak = false }
+      bot.clearControlStates = () => { bot.cleared = true; for (const key in bot.controlState) bot.controlState[key] = false }
       bot.setQuickBarSlot = slot => { bot.quickBarSlot = slot }
       bot.look = async (yaw, pitch) => { bot.entity.yaw = yaw; bot.entity.pitch = pitch }
       bot.swingArm = () => { bot.swings = (bot.swings || 0) + 1 }
@@ -282,6 +284,58 @@ test('anti-AFK yields controls to walking and cancels its timers when disabled o
   manager.disconnect(id)
   assert.equal(a.antiTimer, null)
   assert.deepEqual(a.actionTimers, {})
+})
+
+test('manual control pauses routes, enforces one owner and resumes on release', async t => {
+  const { manager, bots } = setup(t)
+  manager.add('PlayerOne', 'offline')
+  const [id] = manager.accounts.keys()
+  manager.join(id)
+  await delay(10)
+  bots[0].emit('spawn')
+  bots[0].pathfinder.goto = () => new Promise(() => {})
+  manager.setRoute([id], { mode: 'loop', points: [{ x: 1, y: 64, z: 0 }, { x: 2, y: 64, z: 0 }] })
+  manager.beginManual(id, 'window-one')
+  assert.equal(manager.get(id).status, 'manual')
+  assert.equal(bots[0].goal, null)
+  assert.equal(manager.get(id).antiTimer, null)
+  assert.throws(() => manager.beginManual(id, 'window-two'), /another gameplay/)
+  manager.manualInput(id, 'window-one', { keys: ['forward', 'jump'], yaw: 1, pitch: .2, slot: 4 })
+  assert.equal(bots[0].controlState.forward, true)
+  assert.equal(bots[0].controlState.jump, true)
+  assert.equal(bots[0].quickBarSlot, 4)
+  assert.equal(bots[0].entity.yaw, 1)
+  assert.throws(() => manager.manualInput(id, 'window-two', { keys: [], yaw: 0, pitch: 0, slot: 0 }), /Take control/)
+  assert.throws(() => manager.manualInput(id, 'window-one', { keys: ['fly'], yaw: 0, pitch: 0, slot: 0 }), /Invalid/)
+  manager.endManual(id, 'window-one')
+  assert.equal(manager.get(id).manual, null)
+  assert.equal(manager.get(id).status, 'walking')
+  assert.equal(manager.get(id).route.mode, 'loop')
+  assert.equal(bots[0].controlState.forward, false)
+})
+
+test('lost manual heartbeats release movement and disconnect cancels the lease', t => {
+  const { manager } = setup(t)
+  manager.add('PlayerOne', 'offline')
+  const [id] = manager.accounts.keys()
+  const a = manager.get(id)
+  a.desired = true
+  manager.connect(a)
+  a.bot.emit('spawn')
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  manager.beginManual(id, 'window')
+  manager.manualInput(id, 'window', { keys: ['forward', 'sneak'], yaw: 0, pitch: 0, slot: 0 })
+  t.mock.timers.tick(1501)
+  assert.equal(a.manual, null)
+  assert.equal(a.bot.controlState.forward, false)
+  assert.equal(a.bot.controlState.sneak, false)
+  assert.equal(a.status, 'idle')
+  manager.beginManual(id, 'window')
+  manager.disconnect(id)
+  assert.equal(a.manual, null)
+  assert.equal(a.status, 'disconnected')
+  manager.remove(id)
+  assert.doesNotThrow(() => manager.endManual(id, 'window'))
 })
 
 test('resource packs are declined once with the correct protocol identifier', () => {

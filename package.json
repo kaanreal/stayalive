@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "check": "node --check server.js && node --check lib/manager.js && node --check public/app.js"
+    "check": "node --check server.js && node --check lib/manager.js && node --check lib/map.js && node --check lib/play.js && node --check public/app.js && node --check public/map.js && node --check public/controls.js"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +17,9 @@
   "dependencies": {
     "mineflayer": "^4.39.0",
     "mineflayer-pathfinder": "^2.4.5",
-    "prismarine-auth": "^3.1.1"
+    "prismarine-auth": "^3.1.1",
+    "prismarine-viewer": "^1.33.0",
+    "socket.io": "^4.8.4",
+    "vec3": "^0.1.10"
   }
 }

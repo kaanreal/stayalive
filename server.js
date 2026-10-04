@@ -2,6 +2,7 @@ const http = require('node:http')
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const { Manager } = require('./lib/manager')
+const { attachGameplay, playFile } = require('./lib/play')
 
 function createServer (manager, port) {
   const streams = new Set()
@@ -24,6 +25,20 @@ function createServer (manager, port) {
     res.setHeader('Cache-Control', 'no-store')
     const url = new URL(req.url, `http://127.0.0.1:${port}`)
     try {
+      if (req.method === 'GET' && url.pathname.startsWith('/play/')) {
+        const file = playFile(url.pathname)
+        if (!file) return json(res, 404, { error: 'Not found.' })
+        // The viewer compiles block schemas in both its bundle and workers.
+        res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; frame-ancestors 'self'; base-uri 'none'")
+        if (url.pathname === '/play/') {
+          res.setHeader('Referrer-Policy', 'same-origin')
+        }
+        res.writeHead(200, { 'Content-Type': file[1], 'Cache-Control': url.pathname === '/play/' ? 'no-store' : 'public, max-age=86400' })
+        const stream = require('node:fs').createReadStream(file[0])
+        stream.on('error', () => res.destroy())
+        stream.pipe(res)
+        return
+      }
       if (req.method === 'GET' && url.pathname === '/api/events') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', Connection: 'keep-alive' })
         res.write(`data: ${JSON.stringify(manager.snapshot())}\n\n`)
@@ -32,6 +47,7 @@ function createServer (manager, port) {
         return
       }
       if (req.method === 'GET' && url.pathname === '/api/state') return json(res, 200, manager.snapshot())
+      if (req.method === 'GET' && url.pathname === '/api/map') return json(res, 200, manager.map(url.searchParams.get('id'), Number(url.searchParams.get('radius') || 24), url.searchParams.get('layer') || 'surface'))
       if (req.method === 'POST' && url.pathname.startsWith('/api/')) {
         if (req.headers['content-type'] !== 'application/json') throw Error('Send application/json.')
         let raw = ''
@@ -58,6 +74,7 @@ function createServer (manager, port) {
           case '/api/join': manager.joinMany(ids()); break
           case '/api/disconnect': ids().forEach(id => manager.disconnect(id)); break
           case '/api/route': manager.setRoute(ids(), body.route); break
+          case '/api/map-walk': return json(res, 200, { point: manager.walkOnMap(body.id, body.x, body.z, body.layer) })
           case '/api/actions': manager.setActions(ids(), body.actions); break
           case '/api/action': manager.action(ids(), body.action); break
           case '/api/remove': manager.remove(body.id); break
@@ -65,7 +82,7 @@ function createServer (manager, port) {
         }
         return json(res, 200, { ok: true })
       }
-      const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] }
+      const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/map.js': ['map.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] }
       if (req.method !== 'GET' || !files[url.pathname]) return json(res, 404, { error: 'Not found.' })
       const [file, type] = files[url.pathname]
       const data = await fs.readFile(path.join(__dirname, 'public', file))
@@ -74,6 +91,7 @@ function createServer (manager, port) {
   })
   server.on('close', () => { manager.off('change', broadcast); for (const stream of streams) stream.destroy() })
   server.requestTimeout = 15000
+  attachGameplay(server, manager, port)
   return server
 }
 

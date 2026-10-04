@@ -51,7 +51,7 @@ function render (next) {
   if (key !== rowsKey) {
     rowsKey = key
     $('accounts').innerHTML = state.accounts.map(a => {
-      const active = ['idle', 'walking', 'path blocked'].includes(a.status)
+      const active = ['idle', 'walking', 'path blocked', 'manual'].includes(a.status)
       const busy = ['queued', 'connecting', 'login required', 'signing in', 'reconnecting', 'respawning'].includes(a.status)
       const position = a.position ? `${a.position.x} / ${a.position.y} / ${a.position.z}` : 'No position yet'
       let code = ''
@@ -76,6 +76,12 @@ function render (next) {
   }
   selection()
   renderLogs()
+  if (typeof updateMapAccounts === 'function') updateMapAccounts()
+  const gameAccount = $('game-account')
+  const previousGame = gameAccount.value
+  gameAccount.innerHTML = '<option value="">Choose an account</option>' + state.accounts.filter(a => a.position).map(a => `<option value="${a.id}">${escapeHtml(a.username || a.label)}</option>`).join('')
+  gameAccount.value = state.accounts.some(a => a.id === previousGame && a.position) ? previousGame : state.accounts.find(a => a.position)?.id || ''
+  $('open-game').disabled = !gameAccount.value
 }
 
 function renderLogs () {
@@ -200,5 +206,9 @@ $('disable-anti').addEventListener('click', () => run(async () => {
   notice('Anti-AFK disabled for the selected accounts.')
 }))
 const events = new EventSource('/api/events')
+$('open-game').addEventListener('click', () => {
+  if (!$('game-account').value) return
+  window.open('/play/?id=' + encodeURIComponent($('game-account').value), '_blank', 'noopener')
+})
 events.onmessage = event => { $('connection').textContent = '● Dashboard connected'; render(JSON.parse(event.data)) }
 events.onerror = () => { $('connection').textContent = 'Dashboard disconnected. Reconnecting...'; }

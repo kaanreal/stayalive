@@ -2,12 +2,13 @@
   "name": "stayalive",
   "version": "0.1.0",
   "private": true,
-  "description": "A local dashboard for headless Minecraft Java accounts",
+  "description": "A local Minecraft Java client that keeps several accounts online without a game window",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "test": "node --test",
-    "check": "node --check server.js && node --check lib/manager.js && node --check lib/map.js && node --check lib/play.js && node --check public/app.js && node --check public/map.js && node --check public/controls.js"
+    "check": "node scripts/check.js",
+    "font": "node scripts/build-font.js"
   },
   "keywords": [],
   "author": "",
@@ -15,6 +16,7 @@
   "type": "commonjs",
   "engines": { "node": ">=22" },
   "dependencies": {
+    "htm": "^3.1.1",
     "mineflayer": "^4.39.0",
     "mineflayer-pathfinder": "^2.4.5",
     "prismarine-auth": "^3.1.1",

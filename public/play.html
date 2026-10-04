@@ -1,14 +1,75 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>stayalive gameplay</title><link rel="stylesheet" href="play.css"></head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Gameplay · StayAlive</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 10' shape-rendering='crispEdges'%3E%3Cpath fill='%2386ad73' d='M1 0h3v1h-3zM7 0h3v1h-3zM0 1h5v2h-5zM6 1h5v2h-5zM5 2h1v1h-1z'/%3E%3Cpath fill='%237d5c3d' d='M0 3h11v2h-11zM1 5h9v1h-9zM2 6h7v1h-7zM3 7h5v1h-5zM4 8h3v1h-3zM5 9h1v1h-1z'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/gameplay.css">
+</head>
 <body>
-  <div id="crosshair" aria-hidden="true">+</div>
-  <div id="game-info">Loading world...</div>
-  <div id="game-message" role="status"></div>
-  <div id="game-overlay"><h1>Gameplay</h1><p id="game-status">Connecting to your account...</p><button id="take-control" disabled>Take control</button><p class="keys">WASD move · mouse look · Space jump · Ctrl sprint · Shift sneak<br>1–9 / wheel hotbar · left click dig/attack · right click use/place<br>E inventory · T chat · Esc release control</p><p class="keys">Routes and anti-AFK pause while you control the player.</p></div>
-  <div id="vitals"></div><div id="hotbar" aria-label="Hotbar"></div>
+  <div id="crosshair" aria-hidden="true"><i></i><i></i></div>
+
+  <section class="hud hud--account" aria-label="Player">
+    <canvas id="hud-head" width="8" height="8" aria-hidden="true"></canvas>
+    <div class="hud__who"><b id="hud-name">Loading…</b><span id="hud-mode" class="hud__mode">Watching</span></div>
+    <canvas id="hud-health" class="hud__bar" width="200" height="18" role="img" aria-label="Health"></canvas>
+    <canvas id="hud-food" class="hud__bar" width="200" height="18" role="img" aria-label="Food"></canvas>
+    <p id="hud-xyz" class="hud__xyz">— — —</p>
+  </section>
+
+  <section class="hud hud--server" aria-label="Server">
+    <span id="hud-signal" class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+    <div><b id="hud-host">—</b><small id="hud-meta">— ms · — FPS</small></div>
+  </section>
+
+  <p id="game-message" role="status"></p>
   <div id="chat-messages" aria-live="polite"></div>
-  <form id="chat-form" hidden><input id="chat-input" aria-label="Chat or command" maxlength="256" placeholder="Message or /command" autocomplete="off"><button>Send</button></form>
-  <div id="inventory-panel" hidden><div class="inventory-heading"><strong id="inventory-title">Inventory</strong><button id="close-inventory">Close (E)</button></div><div id="inventory-slots"></div><p id="inventory-carried"></p><p>Left/right click to move items. Shift-click for quick transfer.</p></div>
-  <script src="socket.io/socket.io.js"></script><script src="controls.js"></script><script src="index.js"></script>
-</body></html>
+  <form id="chat-form" hidden><span aria-hidden="true">&gt;</span><input id="chat-input" aria-label="Chat or command" maxlength="256" placeholder="Message or /command" autocomplete="off"><button type="submit">Send</button></form>
+
+  <p id="item-name" aria-hidden="true"></p>
+  <div id="hotbar" aria-label="Hotbar"></div>
+
+  <section id="inventory-panel" hidden aria-label="Inventory">
+    <header><h2 id="inventory-title">Inventory</h2><button id="close-inventory" type="button">Close <kbd>E</kbd></button></header>
+    <div id="inventory-slots"></div>
+    <footer><span id="inventory-carried"></span><span>Left or right click moves items · Shift-click transfers</span></footer>
+  </section>
+
+  <div id="game-overlay">
+    <div class="pause">
+      <p class="pause__brand">
+        <svg viewBox="0 0 11 10" aria-hidden="true" shape-rendering="crispEdges"><path fill="#86ad73" d="M1 0h3v1h-3zM7 0h3v1h-3zM0 1h5v2h-5zM6 1h5v2h-5zM5 2h1v1h-1z"/><path fill="#7d5c3d" d="M0 3h11v2h-11zM1 5h9v1h-9zM2 6h7v1h-7zM3 7h5v1h-5zM4 8h3v1h-3zM5 9h1v1h-1z"/></svg>
+        <span>STAY<b>ALIVE</b></span>
+      </p>
+      <h1 id="pause-title">Gameplay</h1>
+      <p id="game-status">Connecting to your account…</p>
+      <button id="take-control" class="mc-btn mc-btn--primary" type="button" disabled>Take control</button>
+      <div class="pause__row">
+        <button id="back" class="mc-btn" type="button">Back to StayAlive</button>
+        <button id="pop-out" class="mc-btn" type="button" hidden>Pop out</button>
+      </div>
+      <label class="pause__setting"><span>Render distance</span><input id="render-distance" type="range" min="4" max="16" step="1"><b><span id="render-distance-value">8</span> chunks</b></label>
+      <dl class="pause__keys">
+        <div><dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Move</dd></div>
+        <div><dt><kbd>Mouse</kbd></dt><dd>Look</dd></div>
+        <div><dt><kbd>Space</kbd></dt><dd>Jump</dd></div>
+        <div><dt><kbd>Ctrl</kbd></dt><dd>Sprint</dd></div>
+        <div><dt><kbd>Shift</kbd></dt><dd>Sneak</dd></div>
+        <div><dt><kbd>1</kbd>–<kbd>9</kbd></dt><dd>Hotbar · wheel</dd></div>
+        <div><dt><kbd>Left</kbd></dt><dd>Dig · attack</dd></div>
+        <div><dt><kbd>Right</kbd></dt><dd>Use · place</dd></div>
+        <div><dt><kbd>E</kbd></dt><dd>Inventory</dd></div>
+        <div><dt><kbd>T</kbd></dt><dd>Chat · commands</dd></div>
+        <div><dt><kbd>Esc</kbd></dt><dd>Release control</dd></div>
+      </dl>
+      <p class="pause__note">Routes and anti-AFK pause while you control the player, and resume when you release it.</p>
+    </div>
+  </div>
+
+  <script src="socket.io/socket.io.js"></script>
+  <script type="module" src="/js/play/gameplay.js"></script>
+</body>
+</html>

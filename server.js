@@ -2,7 +2,24 @@ const http = require('node:http')
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const { Manager } = require('./lib/manager')
-const { attachGameplay, playFile } = require('./lib/play')
+const { attachGameplay, playFile, skinFile } = require('./lib/play')
+const { pingServer } = require('./lib/ping')
+
+const publicRoot = path.join(__dirname, 'public')
+const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.ttf': 'font/ttf' }
+// Preact + htm as one browser module. htm's exports map hides the file, so resolve it from the package.
+const preactBundle = path.join(path.dirname(require.resolve('htm')), '..', 'preact', 'standalone.module.js')
+// three.js as a browser module, in the version prismarine-viewer's meshing worker is built for.
+const threeModule = path.join(path.dirname(require.resolve('three', { paths: [path.dirname(require.resolve('prismarine-viewer'))] })), 'three.module.js')
+
+// Client files live in fixed folders with lowercase names, so paths cannot escape public/.
+function publicFile (pathname) {
+  if (pathname === '/') return path.join(publicRoot, 'index.html')
+  if (pathname === '/vendor/preact.js') return preactBundle
+  if (pathname === '/vendor/three.js') return threeModule
+  if (!/^\/(js|css|fonts)(\/[a-z0-9-]+)+\.(js|css|ttf)$/.test(pathname)) return null
+  return path.join(publicRoot, pathname)
+}
 
 function createServer (manager, port) {
   const streams = new Set()
@@ -21,18 +38,27 @@ function createServer (manager, port) {
     }
     res.setHeader('X-Content-Type-Options', 'nosniff')
     res.setHeader('Referrer-Policy', 'no-referrer')
-    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
     res.setHeader('Cache-Control', 'no-store')
     const url = new URL(req.url, `http://127.0.0.1:${port}`)
     try {
+      const skin = /^\/play\/skin\/([0-9a-f]{16,80})\.png$/.exec(url.pathname)
+      if (req.method === 'GET' && skin) {
+        const data = await skinFile(skin[1]).catch(() => null)
+        if (!data) return json(res, 404, { error: 'Skin not found.' })
+        res.writeHead(200, { 'Content-Type': 'image/png', 'Cache-Control': 'public, max-age=604800, immutable' })
+        res.end(data)
+        return
+      }
       if (req.method === 'GET' && url.pathname.startsWith('/play/')) {
         const file = playFile(url.pathname)
         if (!file) return json(res, 404, { error: 'Not found.' })
-        // The viewer compiles block schemas in both its bundle and workers.
+        // The meshing worker compiles block schemas at runtime.
         res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; worker-src 'self'; frame-ancestors 'self'; base-uri 'none'")
         if (url.pathname === '/play/') {
           res.setHeader('Referrer-Policy', 'same-origin')
         }
+        // Only the meshing worker, textures and models from node_modules are cached.
         res.writeHead(200, { 'Content-Type': file[1], 'Cache-Control': url.pathname === '/play/' ? 'no-store' : 'public, max-age=86400' })
         const stream = require('node:fs').createReadStream(file[0])
         stream.on('error', () => res.destroy())
@@ -78,15 +104,16 @@ function createServer (manager, port) {
           case '/api/actions': manager.setActions(ids(), body.actions); break
           case '/api/action': manager.action(ids(), body.action); break
           case '/api/remove': manager.remove(body.id); break
+          case '/api/ping': return json(res, 200, await pingServer(body))
           default: return json(res, 404, { error: 'Unknown action.' })
         }
         return json(res, 200, { ok: true })
       }
-      const files = { '/': ['index.html', 'text/html'], '/app.js': ['app.js', 'text/javascript'], '/map.js': ['map.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'] }
-      if (req.method !== 'GET' || !files[url.pathname]) return json(res, 404, { error: 'Not found.' })
-      const [file, type] = files[url.pathname]
-      const data = await fs.readFile(path.join(__dirname, 'public', file))
-      res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8` }); res.end(data)
+      const file = req.method === 'GET' && publicFile(url.pathname)
+      if (!file) return json(res, 404, { error: 'Not found.' })
+      const data = await fs.readFile(file).catch(() => null)
+      if (!data) return json(res, 404, { error: 'Not found.' })
+      res.writeHead(200, { 'Content-Type': types[path.extname(file)] }); res.end(data)
     } catch (error) { json(res, 400, { error: error.message }) }
   })
   server.on('close', () => { manager.off('change', broadcast); for (const stream of streams) stream.destroy() })

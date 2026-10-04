@@ -202,6 +202,51 @@ test('an empty failed path cannot be mistaken for arrival or advance a loop', as
   assert.ok(!manager.logs.some(l => l.message.startsWith('Reached ')))
 })
 
+test('snapshot reports the joined server, detected version, ping and vitals', async t => {
+  const { manager, bots } = setup(t)
+  manager.add('PlayerOne', 'offline')
+  const [id] = manager.accounts.keys()
+  const before = manager.snapshot().accounts[0]
+  assert.equal(before.server, null)
+  manager.join(id)
+  assert.deepEqual(manager.snapshot().accounts[0].server, { host: 'localhost', port: 25565 })
+  await delay(10)
+  const bot = bots[0]
+  Object.assign(bot, { player: { ping: 42 }, health: 18, food: 17, game: { dimension: 'minecraft:overworld' } })
+  bot.emit('spawn')
+  // Later setting changes must not relabel the server an account is already on.
+  manager.configure({ host: 'other.example', port: 25570, version: '', reconnect: false, joinDelay: 1000 })
+  const a = manager.snapshot().accounts[0]
+  assert.deepEqual(a.server, { host: 'localhost', port: 25565 })
+  assert.equal(a.version, '1.16.5')
+  assert.equal(a.ping, 42)
+  assert.equal(a.health, 18)
+  assert.equal(a.food, 17)
+  assert.equal(a.dimension, 'minecraft:overworld')
+  manager.disconnect(id)
+  assert.equal(manager.snapshot().accounts[0].server, null)
+  assert.equal(manager.snapshot().accounts[0].ping, null)
+})
+
+test('the latest pathfinder path is kept per connection and cleared when movement changes', async t => {
+  const { manager, bots } = setup(t)
+  manager.add('PlayerOne', 'offline')
+  const [id] = manager.accounts.keys()
+  manager.join(id)
+  await delay(10)
+  const bot = bots[0]
+  bot.emit('spawn')
+  bot.emit('path_update', { status: 'success', path: [{ x: 1.5, y: 64, z: 2.5 }, { x: 2.5, y: 64, z: 2.5 }] })
+  assert.deepEqual(manager.get(id).path, [{ x: 1, y: 64, z: 2 }, { x: 2, y: 64, z: 2 }])
+  manager.setRoute([id], { mode: 'idle', points: [] })
+  assert.deepEqual(manager.get(id).path, [])
+  bot.emit('path_update', { status: 'success', path: [{ x: 3, y: 64, z: 3 }] })
+  manager.disconnect(id)
+  assert.deepEqual(manager.get(id).path, [])
+  bot.emit('path_update', { status: 'success', path: [{ x: 4, y: 64, z: 4 }] })
+  assert.deepEqual(manager.get(id).path, [])
+})
+
 test('player settings validate ranges and persist per account', t => {
   const { manager, directory } = setup(t)
   manager.add('One\nTwo', 'offline')
@@ -374,4 +419,30 @@ test('HTTP API imports accounts, serves dashboard, rejects invalid origins and u
   assert.equal((await fetch(base + '/api/state', { headers: { Origin: 'https://example.com' } })).status, 403)
   assert.equal((await fetch(base + '/api/accounts', { method: 'POST', body: 'csrf' })).status, 400)
   assert.equal((await fetch(base + '/api/unknown', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 404)
+})
+
+test('HTTP server serves client modules, styles, font and Preact, and nothing outside them', async t => {
+  const { manager } = setup(t)
+  const probe = require('node:net').createServer()
+  await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve))
+  const port = probe.address().port
+  await new Promise(resolve => probe.close(resolve))
+  const server = createServer(manager, port)
+  await new Promise(resolve => server.listen(port, '127.0.0.1', resolve))
+  t.after(() => new Promise(resolve => { server.closeAllConnections(); server.close(resolve) }))
+  const base = `http://127.0.0.1:${port}`
+  const page = await fetch(base)
+  assert.match(page.headers.get('content-security-policy'), /img-src 'self' data:/)
+  for (const [file, type] of [['/js/main.js', 'text/javascript'], ['/css/tokens.css', 'text/css'], ['/fonts/stayalive-pixel.ttf', 'font/ttf'], ['/vendor/preact.js', 'text/javascript']]) {
+    const response = await fetch(base + file)
+    assert.equal(response.status, 200, file)
+    assert.ok(response.headers.get('content-type').startsWith(type), file)
+  }
+  assert.match(await (await fetch(base + '/vendor/preact.js')).text(), /export{/)
+  for (const file of ['/js/missing.js', '/js/Main.js', '/package.json', '/public/index.html', '/js/%2e%2e/%2e%2e/server.js', '/css/../server.js']) {
+    assert.equal((await fetch(base + file)).status, 404, file)
+  }
+  const ping = await fetch(base + '/api/ping', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ host: 'https://example.com', port: 25565 }) })
+  assert.equal(ping.status, 400)
+  assert.match((await ping.json()).error, /hostname/)
 })

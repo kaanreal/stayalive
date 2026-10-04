@@ -3,70 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>stayalive</title>
-  <link rel="stylesheet" href="/style.css">
-  <script src="/app.js" defer></script>
-  <script src="/map.js" defer></script>
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="StayAlive keeps your Minecraft Java accounts online without a game window. Keep your spot.">
+  <title>StayAlive</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 11 10' shape-rendering='crispEdges'%3E%3Cpath fill='%2386ad73' d='M1 0h3v1h-3zM7 0h3v1h-3zM0 1h5v2h-5zM6 1h5v2h-5zM5 2h1v1h-1z'/%3E%3Cpath fill='%237d5c3d' d='M0 3h11v2h-11zM1 5h9v1h-9zM2 6h7v1h-7zM3 7h5v1h-5zM4 8h3v1h-3zM5 9h1v1h-1z'/%3E%3C/svg%3E">
+  <link rel="preload" href="/fonts/stayalive-pixel.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/shell.css">
+  <link rel="stylesheet" href="/css/screens.css">
+  <link rel="stylesheet" href="/css/map.css">
+  <script type="module" src="/js/main.js"></script>
 </head>
 <body>
-  <header><a class="brand" href="/">stay<span>alive</span><span class="brand-block" aria-hidden="true">▦</span></a><span class="edition">JAVA EDITION / LOCAL CLIENT</span><span id="connection" role="status">Connecting to dashboard...</span></header>
-  <main>
-    <div class="intro"><div><p class="eyebrow">A LITTLE LESS MINECRAFT, A LITTLE MORE AFK</p><h1>Keep your spot.</h1><p>Multiple accounts. No game window. Somewhere to wander.</p></div><div class="metrics"><div><strong id="online">0</strong><span>connected</span></div><div><strong id="total">0</strong><span>accounts</span></div><div><strong id="memory">0 MB</strong><span>client memory</span></div></div></div>
-    <div id="notice" role="status" hidden></div>
-    <div class="workspace">
-      <aside>
-        <section><div class="section-heading"><h2>Your server</h2><span class="tag">01</span></div>
-          <form id="server-form">
-            <label>Server address<input id="host" placeholder="play.example.net" required autocomplete="off"></label>
-            <div class="field-row"><label>Port<input id="port" type="number" value="25565" min="1" max="65535" required></label><label>Version<input id="version" placeholder="Auto" list="versions"></label></div><datalist id="versions"></datalist>
-            <label>Delay between joins (ms)<input id="join-delay" type="number" value="3000" min="1000" max="60000" required></label>
-            <label class="check"><input id="reconnect" type="checkbox"> Reconnect after disconnecting</label>
-            <button type="submit" class="full">Save server</button>
-            <p class="hint">Changes apply on the next connection. Resource packs are declined.</p>
-          </form>
-        </section>
-        <section><div class="section-heading"><h2>Add accounts</h2><span class="tag">02</span></div>
-          <form id="import-form">
-            <label>Sign-in method<select id="auth"><option value="microsoft">Microsoft account</option><option value="offline">Offline server username</option></select></label>
-            <label id="import-label">Labels or emails, one per line<textarea id="account-input" rows="4" placeholder="main-account&#10;second-account" required></textarea></label>
-            <div class="import-actions"><label class="file-button">Load .txt<input id="account-file" type="file" accept=".txt,text/plain" hidden></label><button type="submit">Add accounts</button></div>
-            <p class="hint" id="auth-hint">Each account signs in through Microsoft in your browser. Never paste passwords here.</p>
-          </form>
-        </section>
-        <div class="aside-note"><span aria-hidden="true">▧</span><p>No graphics or textures.<br>Chunk data stays loaded for movement.</p></div>
-      </aside>
-      <div class="content">
-        <section><div class="section-heading"><div><h2>Gameplay</h2><p class="hint">Open a 3D view and control one connected account.</p></div><div class="toolbar"><select id="game-account" aria-label="Gameplay account"><option value="">Choose an account</option></select><button id="open-game" class="primary">Open gameplay</button></div></div><p class="hint">WASD, mouse look, jump, sprint, sneak, hotbar, digging, placing, inventory and chat. Close the gameplay window to return to AFK.</p></section>
-        <section class="map-section"><div class="section-heading"><div><h2>Local map</h2><p class="hint">Click a loaded surface to walk there. This replaces that account’s route.</p></div><div class="map-controls"><select id="map-account" aria-label="Map account"><option value="">Choose an account</option></select><select id="map-layer" aria-label="Map layer"><option value="surface">Surface</option><option value="player">At player height</option></select><select id="map-radius" aria-label="Map range"><option value="16">33 × 33 blocks</option><option value="24" selected>49 × 49 blocks</option><option value="32">65 × 65 blocks</option></select></div></div><div class="map-wrap"><canvas id="map" width="640" height="640" tabindex="0" aria-label="Top-down terrain map. Click to walk, or use the coordinate form below."></canvas><p id="map-status" role="status">Choose a connected account to load its map.</p></div><div class="map-caption"><span id="map-hover">North is up. Hover for coordinates.</span><span>Blue: player · orange: route · dark: unloaded</span></div></section>
-        <section class="accounts-section"><div class="section-heading"><div><h2>Accounts</h2><p class="hint" id="selected-count">0 selected</p></div><div class="toolbar"><button id="join-selected" class="primary">Join selected</button><button id="disconnect-selected">Disconnect</button></div></div>
-          <div class="table-wrap"><table><thead><tr><th><input id="select-all" aria-label="Select all accounts" type="checkbox"></th><th>Account</th><th>Status</th><th>Position / route</th><th>Controls</th></tr></thead><tbody id="accounts"></tbody></table></div>
-          <div id="empty" class="empty"><span aria-hidden="true">▦</span><h3>Room for your accounts.</h3><p>Add a few labels on the left, sign in, then join your server.</p></div>
-        </section>
-        <section><div class="section-heading"><div><h2>Where to?</h2><p class="hint">Movement applies to the selected accounts.</p></div><span class="tag">03</span></div>
-          <form id="route-form" class="route-form"><div><label>Movement<select id="mode"><option value="loop">Keep walking a route</option><option value="goto">Walk to a position</option><option value="idle">Stay AFK</option></select></label><p class="hint" id="route-hint">Add at least two different waypoints. Bots walk between them on repeat.</p><button class="primary" type="submit">Apply movement</button><button id="stop" type="button">Stop walking</button></div><label>Waypoints (X Y Z, one per line)<textarea id="points" rows="5" placeholder="100 64 200&#10;110 64 200" spellcheck="false"></textarea><span class="hint">Use the block your feet occupy for Y. Walks never break or place blocks.</span></label></form>
-        </section>
-        <section><div class="section-heading"><div><h2>Actions &amp; anti-AFK</h2><p class="hint">Applies to selected accounts. Settings are saved per account.</p></div><span class="tag">04</span></div>
-          <form id="actions-form" class="actions-form">
-            <div>
-              <div class="field-row"><label>Yaw (degrees)<input id="yaw" type="number" min="-180" max="180" step="any" value="0" required></label><label>Pitch (degrees)<input id="pitch" type="number" min="-90" max="90" step="any" value="0" required></label></div>
-              <p class="hint angle-hint">Yaw: 0 south, 90 west, -90 east, 180 north.<br>Pitch: -90 up, 0 level, 90 down.</p>
-              <label>Hotbar slot<select id="hotbar"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option></select></label>
-              <label class="check"><input id="hold-sneak" type="checkbox"> Keep sneaking while idle</label>
-              <div class="action-buttons"><button type="button" data-player-action="jump">Jump</button><button type="button" data-player-action="sneak">Sneak briefly</button><button type="button" data-player-action="swing">Punch / swing arm</button></div>
-            </div>
-            <div>
-              <label class="check"><input id="anti-enabled" type="checkbox"> Enable anti-AFK</label>
-              <label>Repeat every (seconds)<input id="anti-interval" type="number" min="5" max="3600" value="30" required></label>
-              <div class="anti-options"><label class="check"><input id="anti-jump" type="checkbox" checked> Jump</label><label class="check"><input id="anti-sneak" type="checkbox"> Sneak / stand</label><label class="check"><input id="anti-swing" type="checkbox" checked> Swing arm</label><label class="check"><input id="anti-rotate" type="checkbox"> Turn head</label><label class="check"><input id="anti-hotbar" type="checkbox"> Cycle hotbar</label></div>
-              <button class="primary" type="submit">Apply actions</button><button id="disable-anti" type="button">Disable anti-AFK</button>
-            </div>
-          </form>
-          <p class="hint">Walking controls rotation, jumping and sneaking while a route is active. Your idle settings resume when walking stops. Swinging plays the arm animation.</p>
-        </section>
-        <section class="activity"><div class="section-heading"><h2>Activity</h2><select id="log-filter" aria-label="Filter activity by account"><option value="">All accounts</option></select></div><div id="logs" class="logs" role="log" aria-label="Recent client activity"><p class="hint">Quiet for now.</p></div></section>
-      </div>
+  <div id="app">
+    <div class="boot" role="status">
+      <p class="boot__title">STAY<b>ALIVE</b></p>
+      <p class="boot__tagline">Keep your spot.</p>
+      <div class="loading-bar"><span></span></div>
+      <noscript><p class="boot__tagline">StayAlive needs JavaScript to run its client.</p></noscript>
     </div>
-    <footer><span>stayalive · keep this app running while you’re away</span><span>Microsoft sessions stay on this computer.</span></footer>
-  </main>
+  </div>
 </body>
 </html>

@@ -8,10 +8,11 @@ const { setTimeout: delay } = require('node:timers/promises')
 const mc = require('minecraft-protocol')
 const { Vec3 } = require('vec3')
 const { Manager } = require('../lib/manager')
+const { pingServer } = require('../lib/ping')
 
 test('real clients walk off a sky platform, land 36 blocks below and continue their route', { timeout: 20000 }, async t => {
   const version = '1.16.5'
-  const server = mc.createServer({ host: '127.0.0.1', port: 0, version, 'online-mode': false })
+  const server = mc.createServer({ host: '127.0.0.1', port: 0, version, 'online-mode': false, motd: '§aStay §7alive', maxPlayers: 7 })
   await once(server, 'listening')
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'stayalive-protocol-'))
   const manager = new Manager(directory)
@@ -68,6 +69,10 @@ test('real clients walk off a sky platform, land 36 blocks below and continue th
     client.write('update_health', { health: 20, food: 20, foodSaturation: 5 })
     client.write('resource_pack_send', { url: 'https://example.invalid/never-download.zip', hash: '0123456789012345678901234567890123456789' })
   })
+  const status = await pingServer({ host: '127.0.0.1', port: server.socketServer.address().port })
+  assert.equal(status.version, version)
+  assert.equal(status.players.max, 7)
+  assert.deepEqual(status.motd.map(run => run.text), ['Stay ', 'alive'])
   manager.configure({ host: '127.0.0.1', port: server.socketServer.address().port, version, reconnect: false, joinDelay: 1000 })
   manager.add('WalkerOne\nWalkerTwo', 'offline')
   const ids = [...manager.accounts.keys()]

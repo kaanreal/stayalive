@@ -1,0 +1,81 @@
+/* StayAlive design tokens. Dark game-client palette, one pixel display face, blocky bevels. */
+@font-face {
+  font-family: "StayAlive Pixel";
+  src: url("/fonts/stayalive-pixel.ttf") format("truetype");
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces, darkest to lightest */
+  --bg-deep: #0b0d0b;
+  --bg: #0f1110;
+  --bg-raise: #121512;
+  --panel: #181c18;
+  --panel-2: #1f241f;
+  --panel-3: #262c25;
+  --panel-4: #2f362d;
+  --ink: #090b09; /* outlines around blocky elements */
+  --line-soft: #1d221c;
+  --line: #2a3128;
+  --line-2: #3a4537;
+
+  /* StayAlive greens */
+  --green-deep: #3f5638;
+  --green-dark: #55724b;
+  --green: #6f8f63;
+  --green-2: #7fa36f;
+  --accent: #9dbb87;
+  --accent-hi: #c3dcae;
+  --on-accent: #10170d;
+
+  /* Text */
+  --text: #e6eadf;
+  --text-2: #c7cebf;
+  --muted: #a0a89c;
+  --dim: #6f776b;
+
+  /* Signals */
+  --c-online: #8cc66e;
+  --c-walking: #6fb6d9;
+  --c-control: #5fd3c8;
+  --c-busy: #e8b85a;
+  --c-attention: #b39ae0;
+  --c-warn: #e39150;
+  --c-error: #e0705a;
+  --c-offline: #6f776b;
+  --c-route: #f0b45a;
+  --c-waypoint: #c9a0f0;
+
+  /* Type */
+  --font-ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-pixel: "StayAlive Pixel", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "Cascadia Mono", "JetBrains Mono", Consolas, "SF Mono", ui-monospace, monospace;
+
+  /* Depth */
+  --bevel: inset 2px 2px 0 rgba(255, 255, 255, .03), inset -2px -2px 0 rgba(0, 0, 0, .3);
+  --shadow: 0 8px 24px rgba(0, 0, 0, .4);
+  --shadow-lg: 0 24px 64px rgba(0, 0, 0, .55);
+  --glow: 0 0 0 2px var(--accent), 0 0 18px rgba(157, 187, 135, .28);
+
+  /* Motion */
+  --ease: cubic-bezier(.2, .8, .2, 1);
+  --fast: 110ms;
+  --med: 190ms;
+
+  /* Layout */
+  --sidebar: 236px;
+  --topbar: 64px;
+  --gutter: 28px;
+}
+
+.tone-online { --tone: var(--c-online); }
+.tone-walking { --tone: var(--c-walking); }
+.tone-control { --tone: var(--c-control); }
+.tone-busy { --tone: var(--c-busy); }
+.tone-attention { --tone: var(--c-attention); }
+.tone-warn { --tone: var(--c-warn); }
+.tone-error { --tone: var(--c-error); }
+.tone-offline { --tone: var(--c-offline); }
+.tone-waypoint { color: var(--c-waypoint); }

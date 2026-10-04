@@ -11,12 +11,25 @@
 </head>
 <body>
   <div id="crosshair" aria-hidden="true"><i></i><i></i></div>
+  <div id="survival-hud">
+    <canvas id="hud-armor" width="162" height="18" role="img" aria-label="Armor" hidden></canvas>
+    <canvas id="hud-air" width="162" height="18" role="img" aria-label="Air" hidden></canvas>
+    <canvas id="hud-xp" width="364" height="10" role="img" aria-label="Experience"></canvas>
+    <span id="hud-level"></span>
+  </div>
+  <aside id="scoreboard" hidden></aside>
+  <div id="bossbars" aria-label="Boss health"></div>
+  <section id="player-list" hidden aria-label="Players"></section>
+  <div id="server-title" hidden></div>
+  <p id="actionbar"></p>
+  <div id="carried-item" hidden></div>
+  <div id="item-tooltip" hidden></div>
 
   <section class="hud hud--account" aria-label="Player">
     <canvas id="hud-head" width="8" height="8" aria-hidden="true"></canvas>
     <div class="hud__who"><b id="hud-name">Loading…</b><span id="hud-mode" class="hud__mode">Watching</span></div>
-    <canvas id="hud-health" class="hud__bar" width="200" height="18" role="img" aria-label="Health"></canvas>
-    <canvas id="hud-food" class="hud__bar" width="200" height="18" role="img" aria-label="Food"></canvas>
+    <canvas id="hud-health" class="hud__bar" width="162" height="18" role="img" aria-label="Health"></canvas>
+    <canvas id="hud-food" class="hud__bar" width="162" height="18" role="img" aria-label="Food"></canvas>
     <p id="hud-xyz" class="hud__xyz">— — —</p>
   </section>
 
@@ -35,6 +48,7 @@
   <section id="inventory-panel" hidden aria-label="Inventory">
     <header><h2 id="inventory-title">Inventory</h2><button id="close-inventory" type="button">Close <kbd>E</kbd></button></header>
     <div id="inventory-slots"></div>
+    <div id="inventory-avatar" aria-hidden="true"></div>
     <footer><span id="inventory-carried"></span><span>Left or right click moves items · Shift-click transfers</span></footer>
   </section>
 
@@ -52,6 +66,9 @@
         <button id="pop-out" class="mc-btn" type="button" hidden>Pop out</button>
       </div>
       <label class="pause__setting"><span>Render distance</span><input id="render-distance" type="range" min="4" max="16" step="1"><b><span id="render-distance-value">8</span> chunks</b></label>
+      <label class="pause__setting"><span>Field of view</span><input id="field-of-view" type="range" min="30" max="110" step="1" value="70"><b><span id="field-of-view-value">70</span></b></label>
+      <label class="pause__setting"><span>Sensitivity</span><input id="sensitivity" type="range" min="0" max="100" step="1" value="50"><b><span id="sensitivity-value">50</span>%</b></label>
+      <label class="pause__setting"><span>View bobbing</span><input id="view-bobbing" type="checkbox" checked></label>
       <dl class="pause__keys">
         <div><dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></dt><dd>Move</dd></div>
         <div><dt><kbd>Mouse</kbd></dt><dd>Look</dd></div>

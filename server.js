@@ -4,6 +4,7 @@ const path = require('node:path')
 const { Manager } = require('./lib/manager')
 const { attachGameplay, playFile, skinFile } = require('./lib/play')
 const { pingServer } = require('./lib/ping')
+const { soundManifest, soundFile } = require('./lib/sounds')
 
 const publicRoot = path.join(__dirname, 'public')
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.ttf': 'font/ttf' }
@@ -42,6 +43,18 @@ function createServer (manager, port) {
     res.setHeader('Cache-Control', 'no-store')
     const url = new URL(req.url, `http://127.0.0.1:${port}`)
     try {
+      const soundBank = /^\/play\/sounds\/(1\.\d+(?:\.\d+)?)\.json$/.exec(url.pathname)
+      if (req.method === 'GET' && soundBank) {
+        try { return json(res, 200, await soundManifest(soundBank[1])) } catch (error) { return json(res, 502, { error: error.message }) }
+      }
+      const sound = /^\/play\/sound\/([0-9a-f]{40})\.ogg$/.exec(url.pathname)
+      if (req.method === 'GET' && sound) {
+        const data = await soundFile(sound[1]).catch(() => null)
+        if (!data) return json(res, 404, { error: 'Sound not found.' })
+        res.writeHead(200, { 'Content-Type': 'audio/ogg', 'Cache-Control': 'public, max-age=604800, immutable' })
+        res.end(data)
+        return
+      }
       const skin = /^\/play\/skin\/([0-9a-f]{16,80})\.png$/.exec(url.pathname)
       if (req.method === 'GET' && skin) {
         const data = await skinFile(skin[1]).catch(() => null)
@@ -59,7 +72,7 @@ function createServer (manager, port) {
           res.setHeader('Referrer-Policy', 'same-origin')
         }
         // Only the meshing worker, textures and models from node_modules are cached.
-        res.writeHead(200, { 'Content-Type': file[1], 'Cache-Control': url.pathname === '/play/' ? 'no-store' : 'public, max-age=86400' })
+        res.writeHead(200, { 'Content-Type': file[1], 'Cache-Control': ['/play/', '/play/mesher.js'].includes(url.pathname) ? 'no-store' : 'public, max-age=86400' })
         const stream = require('node:fs').createReadStream(file[0])
         stream.on('error', () => res.destroy())
         stream.pipe(res)

@@ -2,7 +2,7 @@ const { test } = require('node:test')
 const assert = require('node:assert/strict')
 const { EventEmitter } = require('node:events')
 const { Vec3 } = require('vec3')
-const { GameView, legacyTable, itemIcon, modelName, renderVersion } = require('../lib/gameview')
+const { GameView, legacyTable, itemIcon, itemInfo, modelName, renderVersion } = require('../lib/gameview')
 const { skinFile } = require('../lib/play')
 
 const Block13 = require('prismarine-block')('1.13.2')
@@ -29,6 +29,8 @@ function fakeBot ({ flattening = false, version = '1.8.8' } = {}) {
   bot.version = version
   bot.supportFeature = feature => feature === 'theFlattening' ? flattening : false
   bot.game = {}
+  bot._client = new EventEmitter()
+  bot.registry = require('minecraft-data')(version)
   bot.players = {}
   bot.entities = {}
   bot.username = 'Me'
@@ -57,8 +59,11 @@ test('the game view streams nearby chunks nearest first, converted for the rende
   const view = new GameView(bot, socket, 2)
   view.start()
   t.after(() => view.stop())
-  assert.deepEqual(socket.sent[0], ['world', { version: '1.13.2', radius: 2, minY: 0, height: 256, cloudHeight: 128, self: { skin: null, slim: false } }])
-  await new Promise(resolve => setTimeout(resolve, 200))
+  assert.deepEqual(socket.sent[0], ['world', { version: '1.13.2', legacy: true, radius: 2, minY: 0, height: 256, cloudHeight: 128, self: { skin: null, cape: null, slim: false, name: 'Me', label: 'Me' } }])
+  const deadline = Date.now() + 2000
+  while (socket.sent.filter(([event]) => event === 'chunk').length < 25 && Date.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 20))
+  }
   const chunks = socket.sent.filter(([event]) => event === 'chunk').map(([, data]) => data)
   assert.equal(chunks.length, 25)
   assert.deepEqual([chunks[0].x, chunks[0].z], [0, 0])
@@ -80,7 +85,7 @@ test('the game view streams nearby chunks nearest first, converted for the rende
 
 test('entities carry skins, slim models, hologram names and sneaking; far ones are dropped', t => {
   const bot = fakeBot()
-  bot.players.Alex = { username: 'Alex', uuid: '0000-1', skinData: { url: 'http://textures.minecraft.net/texture/abcdef0123456789abcdef', model: 'slim' } }
+  bot.players.Alex = { username: 'Alex', uuid: '0000-1', skinData: { url: 'http://textures.minecraft.net/texture/abcdef0123456789abcdef', model: 'slim', capeUrl: 'http://textures.minecraft.net/texture/1234567890abcdef1234567890abcdef' } }
   const socket = fakeSocket()
   const view = new GameView(bot, socket, 4)
   view.start()
@@ -92,13 +97,14 @@ test('entities carry skins, slim models, hologram names and sneaking; far ones a
   const alex = entities.find(e => e.id === 1)
   assert.equal(alex.model, 'player')
   assert.equal(alex.skin, 'abcdef0123456789abcdef')
+  assert.equal(alex.cape, '1234567890abcdef1234567890abcdef')
   assert.equal(alex.slim, true)
   assert.equal(alex.sneaking, true)
   assert.equal(alex.label, 'Alex')
   const stand = entities.find(e => e.id === 2)
   assert.equal(stand.model, 'armor_stand')
   assert.equal(stand.invisible, true)
-  assert.equal(stand.label, 'Welcome')
+  assert.equal(stand.label, '\u00a7aWelcome')
   assert.ok(!entities.some(e => e.id === 3))
   // Moves stream as small volatile updates; leaving the area deletes the entity.
   bot.emit('entityMoved', { id: 1, type: 'player', username: 'Alex', position: new Vec3(11, 64, 10), yaw: 1, pitch: 0 })
@@ -134,7 +140,17 @@ test('skins are fetched only by texture hash, validated and cached', async () =>
   await assert.rejects(skinFile('fedcba9876543210fedcba9876543210', async () => ({ ok: true, arrayBuffer: async () => Buffer.from('<html>') })), /Invalid skin/)
 })
 
-test('gameplay widens the bot view distance while open and restores it after', async t => {
+test('held block metadata keeps non-cube models and foliage tint colors', () => {
+  const bot = fakeBot({ flattening: true, version: '1.16.5' })
+  const item = name => ({ ...bot.registry.itemsByName[name], name, type: bot.registry.itemsByName[name].id, count: 1 })
+  assert.equal(itemInfo(bot, item('oak_stairs')).block, 'oak_stairs')
+  assert.equal(itemInfo(bot, item('grass_block')).tint, bot.registry.tints.grass.default)
+  assert.equal(itemInfo(bot, item('oak_leaves')).tint, bot.registry.tints.foliage.default)
+  assert.equal(itemInfo(bot, item('spruce_leaves')).tint, 6396257)
+  assert.equal(itemInfo(bot, item('diamond_sword')).block, null)
+})
+
+test('gameplay widens view distance, cancels mining on aim changes and restores the account after', async t => {
   const fs = require('node:fs')
   const os = require('node:os')
   const path = require('node:path')
@@ -143,6 +159,9 @@ test('gameplay widens the bot view distance while open and restores it after', a
   const { createServer } = require('../server')
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'stayalive-play-'))
   const settings = []
+  let aimedBlock = { name: 'stone', position: new Vec3(8, 65, 6), face: 3 }
+  let digging = null
+  let stopped = 0
   const manager = new Manager(directory, {
     createBot: options => {
       const bot = fakeBot()
@@ -154,6 +173,22 @@ test('gameplay widens the bot view distance while open and restores it after', a
       bot.setQuickBarSlot = () => {}
       bot.setControlState = () => {}
       bot.look = async () => {}
+      bot.entity.yaw = 0
+      bot.entity.pitch = 0
+      bot.world.raycast = () => aimedBlock
+      bot.canDigBlock = () => true
+      bot.digTime = () => 500
+      bot.stopDigging = () => {
+        if (!bot.targetDigBlock) return
+        stopped++
+        bot.targetDigBlock = null
+        bot.emit('diggingAborted')
+        digging?.(Error('Digging aborted'))
+      }
+      bot.dig = async block => {
+        bot.targetDigBlock = block
+        await new Promise((resolve, reject) => { digging = reject })
+      }
       bot.end = () => bot.emit('end')
       return bot
     },
@@ -178,9 +213,38 @@ test('gameplay widens the bot view distance while open and restores it after', a
   await new Promise(resolve => setTimeout(resolve, 20))
   manager.get(id).bot.emit('spawn')
   const socket = io(`http://127.0.0.1:${port}`, { path: '/play/socket.io', auth: { account: id, radius: 6 }, transports: ['websocket'], extraHeaders: { Host: `127.0.0.1:${port}` } })
+  t.after(() => socket.disconnect())
   const world = await new Promise((resolve, reject) => { socket.on('world', resolve); socket.on('fatal', reject) })
   assert.equal(world.radius, 6)
   assert.deepEqual(settings, [6])
+  const control = await new Promise(resolve => socket.emit('takeControl', resolve))
+  assert.deepEqual(control, { ok: true })
+  const bot = manager.get(id).bot
+  bot.physicsEnabled = true
+  bot.entity.velocity = new Vec3(0, 0, 0)
+  bot.entity.onGround = true
+  const tickPosition = async () => {
+    const update = new Promise(resolve => socket.once('position', resolve))
+    bot.emit('physicsTick')
+    return update
+  }
+  const first = await tickPosition()
+  const second = await tickPosition()
+  assert.equal(second.time - first.time, 50)
+  assert.deepEqual(second.pos, first.pos)
+  assert.deepEqual(second.velocity, { x: 0, y: 0, z: 0 })
+  const teleport = new Promise(resolve => socket.once('position', resolve))
+  bot.entity.position = new Vec3(9, 64, 8)
+  bot.emit('forcedMove')
+  assert.equal((await teleport).teleport, true)
+  const started = new Promise(resolve => socket.once('dig', resolve))
+  socket.emit('interact', 'left')
+  assert.deepEqual(await started, { position: { x: 8, y: 65, z: 6 }, duration: 500 })
+  const cancelled = new Promise(resolve => socket.once('dig', resolve))
+  aimedBlock = null
+  socket.emit('input', { keys: [], yaw: 1, pitch: 0, slot: 0 })
+  assert.equal(await cancelled, null)
+  assert.equal(stopped, 1)
   socket.disconnect()
   await new Promise(resolve => setTimeout(resolve, 100))
   assert.deepEqual(settings, [6, 2])

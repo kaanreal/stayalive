@@ -1,6 +1,7 @@
 // Entities: models from prismarine-viewer's entities.json (ported from its Entity.js), real player skins,
 // nameplates and simple walk and head animation.
 import * as THREE from '/vendor/three.js'
+import { textRuns } from './mechanics.js'
 
 const faces = {
   up: { dir: [0, 1, 0], u0: [0, 0, 1], v0: [0, 0, 0], u1: [1, 0, 1], v1: [0, 0, 1], corners: [[0, 1, 1, 0, 0], [1, 1, 1, 1, 0], [0, 1, 0, 0, 1], [1, 1, 0, 1, 1]] },
@@ -47,7 +48,12 @@ function buildMesh (model) {
   })
   const roots = []
   for (const json of model.bones) {
-    if (json.parent && bones[json.parent]) bones[json.parent].add(bones[json.name])
+    if (json.parent && bones[json.parent]) {
+      // Bedrock model pivots are absolute; Three's child bone positions are relative.
+      const parent = model.bones.find(bone => bone.name === json.parent)
+      bones[json.name].position.sub(new THREE.Vector3(...(parent.pivot || [0, 0, 0])))
+      bones[json.parent].add(bones[json.name])
+    }
     else roots.push(bones[json.name])
   }
   const geometry = new THREE.BufferGeometry()
@@ -57,7 +63,7 @@ function buildMesh (model) {
   geometry.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(attr.skinIndices, 4))
   geometry.setAttribute('skinWeight', new THREE.Float32BufferAttribute(attr.skinWeights, 4))
   geometry.setIndex(attr.indices)
-  const material = new THREE.MeshLambertMaterial({ transparent: true, skinning: true, alphaTest: 0.1 })
+  const material = new THREE.MeshLambertMaterial({ skinning: true, alphaTest: 0.1 })
   const mesh = new THREE.SkinnedMesh(geometry, material)
   mesh.add(...roots)
   mesh.bind(new THREE.Skeleton(Object.values(bones)))
@@ -86,6 +92,7 @@ function pixelTexture (texture) {
   texture.magFilter = THREE.NearestFilter
   texture.minFilter = THREE.NearestFilter
   texture.flipY = false
+  texture.encoding = THREE.sRGBEncoding
   return texture
 }
 
@@ -137,20 +144,30 @@ function modelTexture (path) {
 function nameplate (text) {
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
-  const font = '600 30px "Segoe UI", system-ui, sans-serif'
-  ctx.font = font
-  canvas.width = Math.ceil(ctx.measureText(text).width) + 20
+  const runs = textRuns(text)
+  const font = run => `${run.italic ? 'italic ' : ''}${run.bold ? '700' : '400'} 30px "Segoe UI", system-ui, sans-serif`
+  canvas.width = Math.ceil(runs.reduce((width, run) => { ctx.font = font(run); return width + ctx.measureText(run.text).width }, 0)) + 20
   canvas.height = 42
-  ctx.font = font
   ctx.fillStyle = 'rgba(0, 0, 0, 0.32)'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
-  ctx.fillStyle = '#ffffff'
-  ctx.textAlign = 'center'
+  ctx.textAlign = 'left'
   ctx.textBaseline = 'middle'
-  ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 1)
+  let x = 10
+  for (const run of runs) {
+    ctx.font = font(run)
+    const width = ctx.measureText(run.text).width
+    ctx.fillStyle = '#0008'
+    ctx.fillText(run.text, x + 2, canvas.height / 2 + 3)
+    ctx.fillStyle = run.color || '#ffffff'
+    ctx.fillText(run.text, x, canvas.height / 2 + 1)
+    if (run.underline) ctx.fillRect(x, 35, width, 2)
+    if (run.strike) ctx.fillRect(x, 22, width, 2)
+    x += width
+  }
   const texture = new THREE.CanvasTexture(canvas)
+  texture.encoding = THREE.sRGBEncoding
   texture.minFilter = THREE.LinearFilter
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true }))
+  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false, depthWrite: false, transparent: true }))
   const scale = 0.26 / canvas.height
   sprite.scale.set(canvas.width * scale, canvas.height * scale, 1)
   sprite.renderOrder = 10
@@ -177,11 +194,14 @@ class EntityView {
   }
 
   apply (data, models) {
+    this.local = Boolean(data.local)
     const key = `${data.model}|${data.skin}|${data.slim}|${data.invisible}`
     if (key !== this.key) {
       this.key = key
       if (this.model) { this.group.remove(this.model); this.model.traverse(o => { o.geometry?.dispose(); o.material?.dispose?.() }) }
       this.model = null
+      this.cape = null
+      this.capeHash = undefined
       this.bones = {}
       const entry = models[data.model]
       if (entry && !data.invisible) {
@@ -189,6 +209,7 @@ class EntityView {
         for (const [name, geometry] of Object.entries(entry.geometry)) {
           if (name !== 'default' || !entry.textures[name]) continue
           const { mesh, bones } = buildMesh(data.model === 'player' && data.slim ? slimGeometry(geometry) : geometry)
+          if (data.model === 'player') mesh.scale.multiplyScalar(0.9375)
           if (data.model === 'player') skinTexture(data.skin, data.slim).then(texture => { mesh.material.map = texture; mesh.material.needsUpdate = true })
           else { mesh.material.map = modelTexture(entry.textures[name]); mesh.material.needsUpdate = true }
           Object.assign(this.bones, bones)
@@ -205,6 +226,22 @@ class EntityView {
       if (this.tag) this.group.add(this.tag)
     }
     this.height = data.height || 1.8
+    if (data.cape !== this.capeHash) {
+      this.capeHash = data.cape
+      if (this.cape) { this.cape.parent.remove(this.cape); this.cape.geometry.dispose(); this.cape.material.dispose(); this.cape = null }
+      if (data.cape && this.bones.cape) {
+        const attr = { positions: [], normals: [], uvs: [], indices: [], skinIndices: [], skinWeights: [] }
+        addCube(attr, 0, new THREE.Bone(), { origin: [-5, -16, 0], size: [10, 16, 1], uv: [0, 0] }, 64, 32)
+        const geometry = new THREE.BufferGeometry()
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute(attr.positions, 3))
+        geometry.setAttribute('normal', new THREE.Float32BufferAttribute(attr.normals, 3))
+        geometry.setAttribute('uv', new THREE.Float32BufferAttribute(attr.uvs, 2))
+        geometry.setIndex(attr.indices)
+        const texture = pixelTexture(textureLoader.load(`/play/skin/${data.cape}.png`))
+        this.cape = new THREE.Mesh(geometry, new THREE.MeshLambertMaterial({ map: texture, alphaTest: 0.1 }))
+        this.bones.cape.add(this.cape)
+      }
+    }
     this.sneaking = Boolean(data.sneaking)
     if (this.tag) this.tag.position.y = this.height + (this.model ? 0.35 : 0) - (this.sneaking ? 0.3 : 0)
     if (data.pos) this.moveTo(data)
@@ -233,11 +270,18 @@ class EntityView {
   }
 
   update (dt, camera) {
-    this.group.position.lerp(this.target, damp(dt, 0.07))
-    if (performance.now() - (this.lastMove || 0) > 250) this.speed *= 1 - damp(dt, 0.15)
-    this.yaw += angle(this.targetYaw - this.yaw) * damp(dt, 0.08)
-    this.headYaw += angle((this.targetHeadYaw ?? this.targetYaw) - this.headYaw) * damp(dt, 0.06)
-    this.pitch += ((this.targetPitch ?? 0) - this.pitch) * damp(dt, 0.06)
+    if (this.local) {
+      this.group.position.copy(this.target)
+      this.yaw = this.targetYaw
+      this.headYaw = this.targetHeadYaw ?? this.targetYaw
+      this.pitch = this.targetPitch ?? 0
+    } else {
+      this.group.position.lerp(this.target, damp(dt, 0.07))
+      if (performance.now() - (this.lastMove || 0) > 250) this.speed *= 1 - damp(dt, 0.15)
+      this.yaw += angle(this.targetYaw - this.yaw) * damp(dt, 0.08)
+      this.headYaw += angle((this.targetHeadYaw ?? this.targetYaw) - this.headYaw) * damp(dt, 0.06)
+      this.pitch += ((this.targetPitch ?? 0) - this.pitch) * damp(dt, 0.06)
+    }
     this.group.rotation.y = this.yaw
     if (this.tag) this.tag.visible = this.group.position.distanceTo(camera.position) < 64
     if (!this.model) return
@@ -245,12 +289,20 @@ class EntityView {
     const amount = Math.min(1, this.speed / 4.3)
     this.phase += dt * (4 + this.speed * 1.6) * (amount > 0.05 ? 1 : 0)
     const swing = Math.sin(this.phase) * 0.9 * amount
-    this.rotate('head', -this.pitch, Math.max(-1.2, Math.min(1.2, angle(this.headYaw - this.yaw))))
+    this.rotate('head', this.pitch, Math.max(-1.2, Math.min(1.2, angle(this.headYaw - this.yaw))))
     this.rotate('rightLeg', swing); this.rotate('leftLeg', -swing)
     this.rotate('rightArm', -swing * 0.8); this.rotate('leftArm', swing * 0.8)
+    if (this.swingUntil > performance.now()) {
+      const progress = 1 - (this.swingUntil - performance.now()) / 350
+      this.rotate('rightArm', -Math.sin(progress * Math.PI) * 1.8)
+    }
+    this.model.traverse(object => {
+      if (object.material?.color) object.material.color.set(this.hurtUntil > performance.now() ? 0xff6666 : 0xffffff)
+    })
     this.rotate('leg0', swing); this.rotate('leg3', swing); this.rotate('leg1', -swing); this.rotate('leg2', -swing)
     this.rotate('body', this.sneaking ? -0.45 : 0)
     this.model.position.y = this.sneaking ? -0.2 : 0
+    if (this.cape) this.cape.rotation.x = -(6 + Math.min(55, this.speed * 7) + Math.sin(this.phase) * amount * 8 + (this.sneaking ? 25 : 0)) * Math.PI / 180
   }
 
   dispose (scene) {
@@ -287,6 +339,13 @@ export class EntityManager {
 
   move (data) {
     this.entities.get(data.id)?.moveTo(data)
+  }
+
+  event (data) {
+    const entity = this.entities.get(data.id)
+    if (!entity) return
+    if (data.swing) entity.swingUntil = performance.now() + 350
+    if (data.hurt) entity.hurtUntil = performance.now() + 400
   }
 
   clear () {

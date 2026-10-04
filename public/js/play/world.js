@@ -73,15 +73,22 @@ export class WorldMeshes {
   constructor (scene, workers = Math.min(3, Math.max(1, (navigator.hardwareConcurrency || 4) - 1))) {
     this.scene = scene
     this.meshes = new Map()
+    this.colliders = new Map()
     this.columns = new Set()
+    this.pending = new Map()
+    this.dirtySections = new Map()
     this.version = null
+    this.epoch = 0
     this.minY = 0
     this.height = 256
-    this.material = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, alphaTest: 0.1 })
+    this.material = new THREE.MeshLambertMaterial({ vertexColors: true, alphaTest: 0.1 })
+    this.translucentMaterial = this.material.clone()
+    this.translucentMaterial.transparent = true
+    this.translucentMaterial.depthWrite = false
     // The worker bundle is 63 MB. Chrome fails every request but one when several workers load the same URL
     // at once, which silently dropped most of the world, so each worker gets its own URL.
     this.workers = Array.from({ length: workers }, (_, i) => {
-      const worker = new Worker(`/play/worker.js?worker=${i}`)
+      const worker = new Worker(`/play/mesher.js?worker=${i}`)
       worker.onmessage = ({ data }) => this.receive(data)
       worker.onerror = event => console.error('Meshing worker:', event.message)
       return worker
@@ -99,14 +106,30 @@ export class WorldMeshes {
     this.version = version
     for (const worker of this.workers) worker.postMessage({ type: 'version', version })
     new THREE.ImageLoader().load(`/play/textures/${version}.png`, image => {
+      if (this.version !== version) return
       const texture = new THREE.Texture(image)
+      const canvas = document.createElement('canvas')
+      canvas.width = image.width; canvas.height = image.height
+      const context = canvas.getContext('2d', { willReadFrequently: true })
+      context.drawImage(image, 0, 0)
+      const pixels = context.getImageData(0, 0, canvas.width, canvas.height).data
+      const size = Math.floor(image.width / TILE)
+      const tiles = new Uint8Array(size * size)
+      for (let y = 0; y < image.height; y++) for (let x = 0; x < image.width; x++) {
+        const alpha = pixels[(y * image.width + x) * 4 + 3]
+        if (alpha > 25 && alpha < 240) tiles[Math.floor(y / TILE) * size + Math.floor(x / TILE)] = 1
+      }
+      for (const worker of this.workers) worker.postMessage({ type: 'atlasAlpha', tiles, size })
+      for (const column of this.columns) { const [x, z] = column.split(',').map(Number); this.sections(y => this.dirty(x, y, z)) }
       texture.magFilter = THREE.NearestFilter
       texture.flipY = false
+      texture.encoding = THREE.sRGBEncoding
       if (this.tileMipmaps && image.width === image.height && image.width >= TILE * 2) {
         texture.mipmaps = tileMipmaps(image)
         texture.generateMipmaps = false
         texture.minFilter = THREE.NearestMipmapLinearFilter
         tileSampling(this.material, image.width)
+        tileSampling(this.translucentMaterial, image.width)
       } else {
         texture.generateMipmaps = false
         texture.minFilter = THREE.NearestFilter
@@ -114,8 +137,11 @@ export class WorldMeshes {
       texture.needsUpdate = true
       this.material.map = texture
       this.material.needsUpdate = true
+      this.translucentMaterial.map = texture
+      this.translucentMaterial.needsUpdate = true
     })
     fetch(`/play/blocksStates/${version}.json`).then(r => r.json()).then(json => {
+      if (this.version !== version) return
       for (const worker of this.workers) worker.postMessage({ type: 'blockStates', json })
     })
   }
@@ -123,18 +149,45 @@ export class WorldMeshes {
   reset () {
     for (const mesh of this.meshes.values()) this.drop(mesh)
     this.meshes.clear()
+    this.colliders.clear()
     this.columns.clear()
+    this.pending.clear()
+    this.dirtySections.clear()
     this.version = null
-    for (const worker of this.workers) worker.postMessage({ type: 'reset' })
+    this.epoch++
+    for (const worker of this.workers) worker.postMessage({ type: 'reset', epoch: this.epoch })
   }
 
   drop (mesh) {
+    const key = mesh.userData.section
+    for (const collider of this.colliders.get(key) || []) collider.geometry.dispose()
+    this.colliders.delete(key)
     this.scene.remove(mesh)
     mesh.geometry.dispose()
   }
 
   receive (data) {
-    if (data.type !== 'geometry') return
+    if (data.type !== 'geometry' || (data.epoch !== undefined && data.epoch !== this.epoch)) return
+    this.pending.set(data.key, data)
+  }
+
+  // Coalesce border rebuilds and spread geometry uploads across rendered frames.
+  flush () {
+    for (const data of this.dirtySections.values()) {
+      const worker = this.workers[mod(Math.floor(data.x / 16) + Math.floor(data.y / 16) + Math.floor(data.z / 16), this.workers.length)]
+      worker.postMessage(data)
+    }
+    this.dirtySections.clear()
+    const started = performance.now()
+    let count = 0
+    for (const [key, data] of this.pending) {
+      this.pending.delete(key)
+      this.install(data)
+      if (++count >= 2 || performance.now() - started >= 3) break
+    }
+  }
+
+  install (data) {
     const old = this.meshes.get(data.key)
     if (old) { this.drop(old); this.meshes.delete(data.key) }
     const [x, , z] = data.key.split(',')
@@ -145,29 +198,35 @@ export class WorldMeshes {
     geometry.setAttribute('normal', new THREE.BufferAttribute(g.normals, 3))
     geometry.setAttribute('color', new THREE.BufferAttribute(g.colors, 3))
     geometry.setAttribute('uv', new THREE.BufferAttribute(g.uvs, 2))
-    // Each face is four vertices; record the atlas rectangle it samples from.
-    const rects = new Float32Array(g.uvs.length * 2)
-    for (let v = 0; v < g.uvs.length / 2; v += 4) {
-      let minU = Infinity; let minV = Infinity; let maxU = -Infinity; let maxV = -Infinity
-      for (let k = v; k < v + 4; k++) {
-        const u = g.uvs[k * 2]; const w = g.uvs[k * 2 + 1]
-        if (u < minU) minU = u; if (u > maxU) maxU = u; if (w < minV) minV = w; if (w > maxV) maxV = w
-      }
-      for (let k = v; k < v + 4; k++) rects.set([minU, minV, maxU, maxV], k * 4)
-    }
-    geometry.setAttribute('uvRect', new THREE.BufferAttribute(rects, 4))
-    geometry.setIndex(g.indices)
-    const mesh = new THREE.Mesh(geometry, this.material)
+    geometry.setAttribute('uvRect', new THREE.BufferAttribute(g.uvRects, 4))
+    geometry.setIndex(new THREE.BufferAttribute(g.indices, 1))
+    geometry.addGroup(0, g.opaqueCount, 0)
+    geometry.addGroup(g.opaqueCount, g.indices.length - g.opaqueCount, 1)
+    const mesh = new THREE.Mesh(geometry, [this.material, this.translucentMaterial])
     mesh.position.set(g.sx, g.sy, g.sz)
     mesh.matrixAutoUpdate = false
     mesh.updateMatrix()
+    mesh.updateMatrixWorld(true)
+    mesh.userData.section = data.key
+    this.colliders.set(data.key, (g.collision || []).map(({ cell, indices }) => {
+      const collision = new THREE.BufferGeometry()
+      collision.setAttribute('position', geometry.getAttribute('position'))
+      collision.setIndex(new THREE.BufferAttribute(indices, 1))
+      const min = new THREE.Vector3(...cell.map(value => value * 4 - 8))
+      collision.boundingBox = new THREE.Box3(min, min.clone().addScalar(4))
+      collision.boundingSphere = collision.boundingBox.getBoundingSphere(new THREE.Sphere())
+      const collider = new THREE.Mesh(collision, this.material)
+      collider.position.copy(mesh.position)
+      collider.updateMatrixWorld(true)
+      return collider
+    }))
     this.meshes.set(data.key, mesh)
     this.scene.add(mesh)
   }
 
   dirty (x, y, z, value = true) {
-    const worker = this.workers[mod(Math.floor(x / 16) + Math.floor(y / 16) + Math.floor(z / 16), this.workers.length)]
-    worker.postMessage({ type: 'dirty', x, y, z, value })
+    const key = `${Math.floor(x / 16)},${Math.floor(y / 16)},${Math.floor(z / 16)}`
+    this.dirtySections.set(key, { type: 'dirty', x, y, z, value })
   }
 
   sections (fn) {
@@ -220,6 +279,17 @@ export class WorldMeshes {
           const mesh = this.meshes.get(`${sx + dx * 16},${sy + dy * 16},${sz + dz * 16}`)
           if (mesh) list.push(mesh)
         }
+      }
+    }
+    return list
+  }
+
+  collisionNear (position) {
+    const list = []
+    for (const mesh of this.near(position)) {
+      for (const collider of this.colliders.get(mesh.userData.section) || []) {
+        const center = collider.geometry.boundingSphere.center.clone().add(collider.position)
+        if (center.distanceTo(position) <= 5 + collider.geometry.boundingSphere.radius) list.push(collider)
       }
     }
     return list
